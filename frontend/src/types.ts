@@ -26,7 +26,7 @@ export interface AccountSummary {
   id: string;
   cardId: string;
   email: string;
-  username: string;
+  username?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -43,7 +43,7 @@ export interface HistoryEntry {
 
 export interface CreateAccountRequest {
   email: string;
-  username: string;
+  username?: string;
   password: string;
   notes?: string;
 }

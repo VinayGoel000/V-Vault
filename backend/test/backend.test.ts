@@ -167,6 +167,24 @@ describe("V-Vault backend", () => {
     expect(() => new Date(history.body.history[0].changedAt).toISOString()).not.toThrow();
   });
 
+  it("allows accounts without a username", async () => {
+    await setupAndUnlock();
+    const cardId = await createCard();
+    const account = await request(app)
+      .post(`/cards/${cardId}/accounts`)
+      .send({
+        email: "no-username@example.com",
+        password: "account-password",
+      })
+      .expect(201);
+
+    expect(account.body.account).not.toHaveProperty("username");
+    const detail = await request(app)
+      .get(`/accounts/${account.body.account.id}`)
+      .expect(200);
+    expect(detail.body.account).not.toHaveProperty("username");
+  });
+
   it("generates a password with the requested length and categories", async () => {
     await setupAndUnlock();
     const response = await request(app)

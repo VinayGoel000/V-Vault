@@ -101,8 +101,10 @@ export function CardDetailScreen() {
     try {
       const created = await api.createAccount(activeCard.id, {
         email: accountForm.email,
-        username: accountForm.username,
         password: accountForm.password,
+        ...(accountForm.username.trim().length > 0
+          ? { username: accountForm.username.trim() }
+          : {}),
         ...(accountForm.notes.length > 0 ? { notes: accountForm.notes } : {}),
       });
       setAccounts((current) => [...current, created]);
@@ -205,11 +207,11 @@ export function CardDetailScreen() {
                     <Mail className="shrink-0 text-ocean-600" size={15} />
                     <span className="truncate">{account.email}</span>
                   </span>
-                  <span className="mt-1 block text-xs text-ink-400 sm:hidden">{account.username}</span>
+                  <span className="mt-1 block text-xs text-ink-400 sm:hidden">{account.username || "No username"}</span>
                 </span>
                 <span className="hidden items-center gap-2 truncate text-sm text-ink-600 sm:flex">
                   <UserRound className="shrink-0 text-ink-400" size={15} />
-                  {account.username}
+                  {account.username || "No username"}
                 </span>
                 <span className="hidden text-sm text-ink-500 sm:block">{formatDate(account.updatedAt)}</span>
                 <span className="text-xs font-semibold text-ocean-700 sm:text-right">View account →</span>
@@ -279,7 +281,6 @@ export function CardDetailScreen() {
               label="Username"
               onChange={(event) => setAccountForm((current) => ({ ...current, username: event.target.value }))}
               placeholder="Your username"
-              required
               value={accountForm.username}
             />
             <PasswordField

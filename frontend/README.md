@@ -77,7 +77,7 @@ be unlocked and return `{ "error": "..." }` on errors.
 | `GET` | `/cards` | Response `{ cards: (Card & { accountCount: number })[] }` |
 | `PATCH` | `/cards/:id` | Request `{ name: string }`; response `{ card: Card }` |
 | `DELETE` | `/cards/:id` | Response `204` |
-| `POST` | `/cards/:cardId/accounts` | Request `{ email, username, password, notes? }`; response `{ account: AccountSummary }` |
+| `POST` | `/cards/:cardId/accounts` | Request `{ email, password, username?, notes? }`; response `{ account: AccountSummary }` |
 | `GET` | `/cards/:cardId/accounts` | Response `{ accounts: AccountSummary[] }` without passwords |
 | `GET` | `/accounts/:id` | Response `{ account: AccountSummary & { password: string } }` |
 | `PATCH` | `/accounts/:id` | Request `{ email?, username?, notes?: string \| null }`; response `{ account: AccountSummary }` |
@@ -89,6 +89,9 @@ be unlocked and return `{ "error": "..." }` on errors.
 `Card` contains `id`, `name`, `createdAt`, and `updatedAt`. `AccountSummary`
 contains `id`, `cardId`, `email`, `username`, optional `notes`, `createdAt`,
 and `updatedAt`.
+
+The account `username` field is optional. The UI displays `No username` when
+one was not supplied and does not send an empty username during edits.
 
 ## WebAuthn / Windows Hello contract caveat
 

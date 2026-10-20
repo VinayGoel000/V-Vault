@@ -167,6 +167,9 @@ Response `200`:
 
 All card routes require an unlocked vault.
 
+Account creation accepts `email` and `password` plus optional `username` and
+`notes`. Accounts without a username are returned with the username omitted.
+
 #### `POST /cards`
 
 ```bash

@@ -16,7 +16,7 @@ export class AccountsService extends UnlockedService {
     cardId: string,
     data: {
       email: string;
-      username: string;
+      username?: string;
       password: string;
       notes?: string;
     },

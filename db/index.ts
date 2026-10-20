@@ -63,7 +63,7 @@ export const AccountSchema = z.object({
   id: z.string().uuid(),
   cardId: z.string().uuid(),
   email: z.string().email(),
-  username: z.string().min(1).max(200),
+  username: z.string().min(1).max(200).optional(),
   password: EncryptedValueSchema,
   notes: z.string().max(10_000).optional(),
   history: z.array(PasswordHistoryEntrySchema),
@@ -112,7 +112,7 @@ export const RenameCardRequestSchema = CreateCardRequestSchema;
 
 export const CreateAccountRequestSchema = z.object({
   email: z.string().email(),
-  username: z.string().min(1).max(200),
+  username: z.string().min(1).max(200).optional(),
   password: z.string().min(1),
   notes: z.string().max(10_000).optional(),
 });

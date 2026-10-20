@@ -5,7 +5,7 @@ import { Button, LoadingState, Modal, PasswordField, TextArea, TextField } from 
 import { api } from "../api/client";
 import { useToast } from "../state/ToastContext";
 import { useVault } from "../state/VaultContext";
-import type { AccountDetails, HistoryEntry } from "../api/types";
+import type { AccountDetails, HistoryEntry, UpdateAccountRequest } from "../api/types";
 
 function formatDate(value: string, includeTime = false): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -91,11 +91,14 @@ export function AccountDetailScreen() {
     event.preventDefault();
     setBusy(true);
     try {
-      const summary = await api.updateAccount(accountId, {
+      const update: UpdateAccountRequest = {
         email: form.email,
-        username: form.username,
         notes: form.notes.length > 0 ? form.notes : null,
-      });
+      };
+      if (form.username.trim().length > 0) {
+        update.username = form.username.trim();
+      }
+      const summary = await api.updateAccount(accountId, update);
       setAccount((current) => (current ? { ...current, ...summary } : current));
       setEditing(false);
       success("Account details updated.");
@@ -193,7 +196,7 @@ export function AccountDetailScreen() {
         <div>
           <p className="eyebrow">Account details</p>
           <h1 className="mt-2 break-all font-display text-3xl font-bold tracking-tight text-ink-900">{account.email}</h1>
-          <p className="mt-2 text-sm text-ink-500">{account.username} · Updated {formatDate(account.updatedAt)}</p>
+          <p className="mt-2 text-sm text-ink-500">{account.username || "No username"} · Updated {formatDate(account.updatedAt)}</p>
         </div>
         <Button onClick={() => setEditing((current) => !current)} variant="secondary">
           <Pencil size={15} />
@@ -212,11 +215,14 @@ export function AccountDetailScreen() {
         </button>
         <button
           className="rounded-xl border border-ink-100 bg-white px-4 py-3 text-left shadow-card transition hover:border-ocean-200 hover:bg-ocean-50"
-          onClick={() => void handleCopy(account.username, "Username")}
+          disabled={!account.username}
+          onClick={() => {
+            if (account.username) void handleCopy(account.username, "Username");
+          }}
           type="button"
         >
-          <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-ink-400">Username · click to copy</span>
-          <span className="mt-1 block truncate text-sm font-semibold text-ink-800">{account.username}</span>
+          <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-ink-400">Username{account.username ? " · click to copy" : ""}</span>
+          <span className="mt-1 block truncate text-sm font-semibold text-ink-800">{account.username || "Not provided"}</span>
         </button>
       </div>
 
@@ -276,7 +282,6 @@ export function AccountDetailScreen() {
                 autoComplete="username"
                 label="Username"
                 onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
-                required
                 value={form.username}
               />
               <TextArea
