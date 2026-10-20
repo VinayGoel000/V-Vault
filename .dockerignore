@@ -1,0 +1,8 @@
+.git
+.gitignore
+.dockerignore
+backend/node_modules
+backend/dist
+backend/coverage
+db/vault.vault
+db/vault.vault.*.tmp
