@@ -25,7 +25,7 @@ export class VaultController {
   };
 
   public lock = async (_request: Request, response: Response): Promise<void> => {
-    this.service.lock();
+    await this.service.lock();
     response.json({ message: "Vault locked" });
   };
 }

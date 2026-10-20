@@ -1,7 +1,7 @@
 import type { PasswordHistoryEntry } from "../../../../db";
 import { decryptAesGcm, encryptAesGcm } from "../../crypto/aes-gcm";
 import { HttpError } from "../../middleware/error-handler";
-import { UnlockedService, nowIso } from "../base.service";
+import { appendActivity, isActive, UnlockedService, nowIso } from "../base.service";
 
 export interface HistoryResult {
   password: string;
@@ -14,7 +14,9 @@ export class HistoryService extends UnlockedService {
     newPassword: string,
   ): Promise<void> {
     return this.withVault(async (vault, key) => {
-      const account = vault.accounts.find((candidate) => candidate.id === accountId);
+       const account = vault.accounts.find(
+         (candidate) => candidate.id === accountId && isActive(candidate),
+       );
       if (account === undefined) {
         throw new HttpError(404, "Account not found");
       }
@@ -23,16 +25,26 @@ export class HistoryService extends UnlockedService {
         password: account.password,
         changedAt: nowIso(),
       };
-      account.history.push(historyEntry);
-      account.password = encryptAesGcm(newPassword, key);
-      account.updatedAt = nowIso();
-      await this.repository.save(vault, key);
+       account.history.push(historyEntry);
+       account.password = encryptAesGcm(newPassword, key);
+       delete account.leakCheckCache;
+       account.updatedAt = nowIso();
+       appendActivity(vault, key, {
+         type: "password_changed",
+         at: account.updatedAt,
+        entityType: "account",
+        entityId: account.id,
+        entityLabel: account.email,
+       });
+       await this.repository.save(vault, key);
     });
   }
 
   public async list(accountId: string): Promise<HistoryResult[]> {
     return this.withVault((vault, key) => {
-      const account = vault.accounts.find((candidate) => candidate.id === accountId);
+       const account = vault.accounts.find(
+         (candidate) => candidate.id === accountId && isActive(candidate),
+       );
       if (account === undefined) {
         throw new HttpError(404, "Account not found");
       }

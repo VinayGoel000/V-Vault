@@ -41,14 +41,75 @@ export const EncryptedValueSchema = z.object({
 
 export type EncryptedValue = ZodInfer<typeof EncryptedValueSchema>;
 
+export const ActivityLogEntrySchema = z.object({
+  id: z.string().uuid(),
+  type: z.string().min(1).max(100),
+  entityType: z.enum(["vault", "card", "account", "import"]),
+  entityLabel: z.string().max(200),
+  createdAt: z.string().datetime({ offset: true }),
+});
+export type ActivityLogEntry = ZodInfer<typeof ActivityLogEntrySchema>;
+
 export const CardSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1).max(200),
+  deletedAt: z.string().datetime({ offset: true }).nullable().default(null),
   createdAt: z.string().datetime({ offset: true }),
   updatedAt: z.string().datetime({ offset: true }),
 });
 
 export type Card = ZodInfer<typeof CardSchema>;
+
+const CustomFieldKeySchema = z.string().trim().min(1).max(50);
+const CustomFieldPlainValueSchema = z.string().max(1_000);
+const OptionalUsernameSchema = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.trim().length === 0
+      ? undefined
+      : value,
+  z.string().trim().min(1).max(200).optional(),
+);
+
+/** A persisted custom field keeps secret values in the same encrypted format as passwords. */
+export const CustomFieldSchema = z.discriminatedUnion("isSecret", [
+  z.object({
+    id: z.string().uuid(),
+    key: CustomFieldKeySchema,
+    value: CustomFieldPlainValueSchema,
+    isSecret: z.literal(false),
+  }),
+  z.object({
+    id: z.string().uuid(),
+    key: CustomFieldKeySchema,
+    value: EncryptedValueSchema,
+    isSecret: z.literal(true),
+  }),
+]);
+
+export type CustomField = ZodInfer<typeof CustomFieldSchema>;
+
+export const CustomFieldRequestSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    key: CustomFieldKeySchema,
+    value: CustomFieldPlainValueSchema,
+    isSecret: z.boolean().default(false),
+  });
+
+export type CustomFieldRequest = ZodInfer<typeof CustomFieldRequestSchema>;
+
+export const LegacyCustomFieldRequestSchema = z
+  .object({
+    name: z.string().trim().min(1).max(50),
+    value: CustomFieldPlainValueSchema,
+    secret: z.boolean().optional(),
+    isSecret: z.boolean().optional(),
+  })
+  .transform(({ name, value, secret, isSecret }) => ({
+    key: name,
+    value,
+    isSecret: secret ?? isSecret ?? false,
+  }));
 
 export const PasswordHistoryEntrySchema = z.object({
   password: EncryptedValueSchema,
@@ -63,10 +124,14 @@ export const AccountSchema = z.object({
   id: z.string().uuid(),
   cardId: z.string().uuid(),
   email: z.string().email(),
-  username: z.string().min(1).max(200).optional(),
+  username: OptionalUsernameSchema,
+  websiteUrl: z.string().url().max(2_048).optional(),
   password: EncryptedValueSchema,
-  notes: z.string().max(10_000).optional(),
+  notes: z.string().max(2_000).optional(),
+  customFields: z.array(CustomFieldSchema).max(20).default([]),
+  leakCheckCache: EncryptedValueSchema.optional(),
   history: z.array(PasswordHistoryEntrySchema),
+  deletedAt: z.string().datetime({ offset: true }).nullable().default(null),
   createdAt: z.string().datetime({ offset: true }),
   updatedAt: z.string().datetime({ offset: true }),
 });
@@ -77,6 +142,7 @@ export const VaultSchema = z.object({
   version: z.literal(1),
   cards: z.array(CardSchema),
   accounts: z.array(AccountSchema),
+  activityLog: z.array(ActivityLogEntrySchema).max(500).default([]),
 });
 
 export type Vault = ZodInfer<typeof VaultSchema>;
@@ -112,22 +178,28 @@ export const RenameCardRequestSchema = CreateCardRequestSchema;
 
 export const CreateAccountRequestSchema = z.object({
   email: z.string().email(),
-  username: z.string().min(1).max(200).optional(),
+  username: OptionalUsernameSchema,
   password: z.string().min(1),
-  notes: z.string().max(10_000).optional(),
+  websiteUrl: z.string().url().max(2_048).optional(),
+  notes: z.string().max(2_000).optional(),
+  customFields: z.array(CustomFieldRequestSchema).max(20).default([]),
 });
 
 export const UpdateAccountRequestSchema = z
   .object({
     email: z.string().email().optional(),
-    username: z.string().min(1).max(200).optional(),
-    notes: z.string().max(10_000).nullable().optional(),
+    username: OptionalUsernameSchema,
+    websiteUrl: z.string().url().max(2_048).nullable().optional(),
+    notes: z.string().max(2_000).nullable().optional(),
+  customFields: z.array(CustomFieldRequestSchema).max(20).optional(),
   })
   .refine(
     (value) =>
       value.email !== undefined ||
       value.username !== undefined ||
-      value.notes !== undefined,
+      value.websiteUrl !== undefined ||
+      value.notes !== undefined ||
+      value.customFields !== undefined,
     { message: "At least one account field is required" },
   );
 

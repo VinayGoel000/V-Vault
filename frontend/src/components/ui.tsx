@@ -34,7 +34,7 @@ export function Button({
       className={cn(
         "inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
         variant === "primary" &&
-          "bg-ocean-700 text-white shadow-sm hover:bg-ocean-800",
+          "theme-primary shadow-sm",
         variant === "secondary" &&
           "border border-ink-200 bg-white text-ink-800 hover:border-ocean-300 hover:bg-ocean-50",
         variant === "ghost" && "text-ink-600 hover:bg-ocean-50 hover:text-ocean-800",

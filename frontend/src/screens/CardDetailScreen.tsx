@@ -39,6 +39,7 @@ export function CardDetailScreen() {
     email: "",
     username: "",
     password: "",
+    websiteUrl: "",
     notes: "",
   });
   const [busy, setBusy] = useState(false);
@@ -81,12 +82,12 @@ export function CardDetailScreen() {
   }
 
   async function handleDelete() {
-    if (!window.confirm(`Delete “${activeCard.name}” and all of its accounts?`)) return;
+    if (!window.confirm(`This will be Moved to Recycle Bin — restorable for 30 days. Move “${activeCard.name}” and its accounts?`)) return;
     setBusy(true);
     try {
       await api.deleteCard(activeCard.id);
       await refreshCards();
-      success("Card deleted.");
+      success("Moved to Recycle Bin.");
       navigate("/");
     } catch (error: unknown) {
       reportError(error);
@@ -102,6 +103,9 @@ export function CardDetailScreen() {
       const created = await api.createAccount(activeCard.id, {
         email: accountForm.email,
         password: accountForm.password,
+        ...(accountForm.websiteUrl.trim().length > 0
+          ? { websiteUrl: accountForm.websiteUrl.trim() }
+          : {}),
         ...(accountForm.username.trim().length > 0
           ? { username: accountForm.username.trim() }
           : {}),
@@ -110,7 +114,7 @@ export function CardDetailScreen() {
       setAccounts((current) => [...current, created]);
       await refreshCards();
       setAddOpen(false);
-      setAccountForm({ email: "", username: "", password: "", notes: "" });
+      setAccountForm({ email: "", username: "", password: "", websiteUrl: "", notes: "" });
       success("Account added.");
     } catch (error: unknown) {
       reportError(error);
@@ -304,9 +308,18 @@ export function CardDetailScreen() {
                 {generating ? "Generating…" : "Generate password"}
               </Button>
             </div>
+            <TextField
+              autoComplete="url"
+              label="Website"
+              onChange={(event) => setAccountForm((current) => ({ ...current, websiteUrl: event.target.value }))}
+              placeholder="https://example.com"
+              type="url"
+              value={accountForm.websiteUrl}
+            />
             <div className="sm:col-span-2">
               <TextArea
                 label="Notes"
+                maxLength={2000}
                 onChange={(event) => setAccountForm((current) => ({ ...current, notes: event.target.value }))}
                 placeholder="Optional recovery details or reminders"
                 value={accountForm.notes}

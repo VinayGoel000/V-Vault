@@ -133,3 +133,35 @@ docker run --rm -p 8080:80 v-vault-frontend
 The container serves the frontend at `http://127.0.0.1:8080`. A production
 reverse proxy must route the configured API base to the loopback backend when
 the frontend and backend run in separate containers.
+
+## Additional screens and endpoints
+
+While unlocked, the header includes links for:
+
+- **Recycle Bin** — `GET /recycle-bin`, `POST
+  /recycle-bin/cards/:id/restore`, `POST
+  /recycle-bin/accounts/:id/restore`, `DELETE
+  /recycle-bin/cards/:id/permanent`, and `DELETE
+  /recycle-bin/accounts/:id/permanent`. Normal deletes explain that items are
+  restorable for 30 days.
+- **Activity** — `GET /activity-log?limit=100`, shown as a read-only timeline.
+- **Import** — `POST /import/preview` and `POST /import/commit` using a CSV
+  multipart upload. The file is previewed with masked passwords and is never
+  stored by the frontend.
+
+Account Detail also uses `PATCH /accounts/:id` for website URLs, notes up to
+2000 characters, and up to 20 custom fields. Secret custom-field values are
+shown only after unlock and copied from in-memory React state.
+
+Leak checks use `POST /security/leak-check` with `{ accountId }` and
+`POST /security/leak-check-all`. This is the only feature that uses the
+internet. The UI explains that only the first five characters of the SHA-1
+password hash are sent; no password is sent from the frontend.
+
+## Themes
+
+The header Settings menu provides Royal Violet, Ocean Teal (default), Sunset
+Warm, and Midnight. Theme CSS variables update instantly without a reload.
+Only the selected theme name is persisted under the non-secret UI preference
+key `v-vault-theme`; passwords and keys are never stored in browser storage.
+Vault cards remain plain white cards with dark text in every theme.

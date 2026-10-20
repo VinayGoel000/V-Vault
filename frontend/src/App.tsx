@@ -7,9 +7,13 @@ import { DashboardScreen } from "./screens/DashboardScreen";
 import { GeneratorScreen } from "./screens/GeneratorScreen";
 import { LockScreen } from "./screens/LockScreen";
 import { SetupScreen } from "./screens/SetupScreen";
+import { ActivityScreen } from "./screens/ActivityScreen";
+import { ImportScreen } from "./screens/ImportScreen";
+import { RecycleBinScreen } from "./screens/RecycleBinScreen";
 import { ToastProvider } from "./state/ToastContext";
 import { useVault, VaultProvider } from "./state/VaultContext";
 import { useIdleLock } from "./hooks/useIdleLock";
+import { ThemeProvider } from "./state/ThemeContext";
 
 function StageRedirect() {
   const { stage } = useVault();
@@ -42,6 +46,9 @@ function RouterContent() {
         <Route element={<AppShell />}>
           <Route element={<DashboardScreen />} index />
           <Route element={<GeneratorScreen />} path="/generator" />
+          <Route element={<RecycleBinScreen />} path="/recycle-bin" />
+          <Route element={<ActivityScreen />} path="/activity" />
+          <Route element={<ImportScreen />} path="/import" />
           <Route element={<CardDetailScreen />} path="/vault/:cardId" />
           <Route element={<AccountDetailScreen />} path="/vault/:cardId/account/:accountId" />
         </Route>
@@ -54,11 +61,13 @@ function RouterContent() {
 export function App() {
   return (
     <BrowserRouter>
-      <ToastProvider>
-        <VaultProvider>
-          <RouterContent />
-        </VaultProvider>
-      </ToastProvider>
+      <ThemeProvider>
+        <ToastProvider>
+          <VaultProvider>
+            <RouterContent />
+          </VaultProvider>
+        </ToastProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

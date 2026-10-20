@@ -1,12 +1,14 @@
-import { KeyRound, LockKeyhole, Sparkles, Vault as VaultIcon } from "lucide-react";
+import { Activity, KeyRound, LockKeyhole, Palette, Recycle, Settings, Sparkles, Upload, Vault as VaultIcon } from "lucide-react";
+import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "./ui";
 import { useVault } from "../state/VaultContext";
+import { themes, useTheme } from "../state/ThemeContext";
 
 function Brand({ compact = false, light = false }: { compact?: boolean; light?: boolean }) {
   return (
     <div className={cn("flex items-center gap-3", compact && "gap-2.5")}>
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ocean-700 font-display text-sm font-extrabold text-white shadow-sm">
+      <span className="flex h-9 w-9 items-center justify-center rounded-xl font-display text-sm font-extrabold text-white shadow-sm" style={{ backgroundColor: "var(--accent-dark)" }}>
         V
       </span>
       <span className={cn("font-display text-lg font-bold tracking-tight", light ? "text-white" : "text-ink-900")}>V-Vault</span>
@@ -51,6 +53,8 @@ export function AppShell() {
   const { lockVault } = useVault();
   const navigate = useNavigate();
   const location = useLocation();
+  const { themeName, setTheme } = useTheme();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   async function handleLock() {
     await lockVault();
@@ -58,13 +62,16 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-screen bg-[#ecfdf9] text-ink-900">
-      <header className="bg-[#0f766e] text-white shadow-sm">
+    <div className="theme-page min-h-screen text-ink-900" style={{ backgroundColor: "var(--bg)" }}>
+      <header className="text-white shadow-sm" style={{ backgroundColor: "var(--header)", color: "var(--header-text)" }}>
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-8 lg:px-12">
           <Brand compact light />
-          <nav className="flex items-center gap-1 rounded-xl bg-white/10 p-1">
+          <nav className="flex flex-wrap items-center gap-1 rounded-xl bg-white/10 p-1">
             <NavigationLink dark icon={VaultIcon} label="Vault" to="/" />
             <NavigationLink dark icon={Sparkles} label="Generator" to="/generator" />
+            <NavigationLink dark icon={Recycle} label="Recycle Bin" to="/recycle-bin" />
+            <NavigationLink dark icon={Activity} label="Activity" to="/activity" />
+            <NavigationLink dark icon={Upload} label="Import" to="/import" />
           </nav>
           <div className="flex items-center gap-4">
             <div className="hidden items-center gap-2 text-xs font-semibold text-teal-50 sm:flex">
@@ -80,13 +87,48 @@ export function AppShell() {
               <span className="hidden sm:inline">Lock vault</span>
               <span className="sm:hidden">Lock</span>
             </button>
+            <div className="relative">
+              <button
+                aria-label="Theme settings"
+                className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/25 px-3 text-sm font-semibold text-white transition hover:bg-white/15"
+                onClick={() => setSettingsOpen((current) => !current)}
+                type="button"
+              >
+                <Settings size={17} />
+                <span className="hidden lg:inline">Settings</span>
+              </button>
+              {settingsOpen ? (
+                <div className="absolute right-0 top-12 z-50 w-56 rounded-2xl border border-ink-100 bg-white p-3 text-ink-900 shadow-soft">
+                  <div className="mb-2 flex items-center gap-2 px-2 text-xs font-bold uppercase tracking-[0.14em] text-ink-400">
+                    <Palette size={14} /> Theme
+                  </div>
+                  {themes.map((option) => (
+                    <button
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-semibold transition",
+                        themeName === option.name ? "bg-ink-100 text-ink-900" : "hover:bg-ink-50",
+                      )}
+                      key={option.name}
+                      onClick={() => {
+                        setTheme(option.name);
+                        setSettingsOpen(false);
+                      }}
+                      type="button"
+                    >
+                      <span className="h-5 w-5 rounded-full border border-black/10" style={{ background: `linear-gradient(135deg, ${option.header} 50%, ${option.accent} 50%)` }} />
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </header>
       <main className="mx-auto min-h-[calc(100vh-73px)] max-w-7xl px-5 py-8 sm:px-8 sm:py-10 lg:px-12">
         <div className="mb-8 flex items-center justify-between">
           <p className="text-xs font-semibold text-ink-500">
-            {location.pathname.startsWith("/generator") ? "Tools / Generator" : "Your private space"}
+            {location.pathname.startsWith("/generator") ? "Tools / Generator" : location.pathname.startsWith("/activity") ? "Audit / Activity" : location.pathname.startsWith("/recycle-bin") ? "Vault / Recycle Bin" : location.pathname.startsWith("/import") ? "Vault / Import" : "Your private space"}
           </p>
           <p className="text-xs font-medium text-ink-400">Secrets stay in memory</p>
         </div>

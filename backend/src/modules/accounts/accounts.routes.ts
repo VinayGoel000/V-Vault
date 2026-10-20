@@ -25,6 +25,15 @@ export function createAccountsRouter(controller: AccountsController): Router {
     asyncHandler(controller.update),
   );
   router.delete("/accounts/:id", asyncHandler(controller.remove));
+  router.post("/accounts/:id/restore", asyncHandler(controller.restore));
+  router.delete(
+    "/accounts/:id/permanent",
+    asyncHandler(controller.permanentlyDelete),
+  );
+  router.delete(
+    "/accounts/:id/permanent-delete",
+    asyncHandler(controller.permanentlyDelete),
+  );
 
   return router;
 }

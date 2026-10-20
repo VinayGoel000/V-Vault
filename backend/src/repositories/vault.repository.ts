@@ -44,6 +44,7 @@ const EMPTY_VAULT: Vault = {
   version: 1,
   cards: [],
   accounts: [],
+  activityLog: [],
 };
 
 /** All filesystem access for the vault is kept in this repository. */

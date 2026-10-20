@@ -18,6 +18,12 @@ export function createCardsRouter(controller: CardsController): Router {
     asyncHandler(controller.rename),
   );
   router.delete("/:id", asyncHandler(controller.remove));
+  router.post("/:id/restore", asyncHandler(controller.restore));
+  router.delete("/:id/permanent", asyncHandler(controller.permanentlyDelete));
+  router.delete(
+    "/:id/permanent-delete",
+    asyncHandler(controller.permanentlyDelete),
+  );
 
   return router;
 }

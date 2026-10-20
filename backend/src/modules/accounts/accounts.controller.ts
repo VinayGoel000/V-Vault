@@ -41,4 +41,21 @@ export class AccountsController {
     await this.service.remove(String(request.params.id));
     response.status(204).send();
   };
+
+  public restore = async (
+    request: Request,
+    response: Response,
+  ): Promise<void> => {
+    response.json({
+      account: await this.service.restore(String(request.params.id)),
+    });
+  };
+
+  public permanentlyDelete = async (
+    request: Request,
+    response: Response,
+  ): Promise<void> => {
+    await this.service.permanentlyDelete(String(request.params.id));
+    response.status(204).send();
+  };
 }

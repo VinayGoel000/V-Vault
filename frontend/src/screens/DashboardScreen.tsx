@@ -84,7 +84,7 @@ export function DashboardScreen() {
              </button>
            ))}
           <button
-            className="min-h-40 rounded-2xl border-2 border-dashed border-ocean-300 bg-ocean-50/70 p-6 text-left text-ocean-800 transition hover:border-ocean-500 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400 focus-visible:ring-offset-2"
+            className="min-h-40 rounded-2xl border-2 border-dashed border-ocean-300 bg-white p-6 text-left text-ocean-800 transition hover:border-ocean-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400 focus-visible:ring-offset-2"
             onClick={() => setNewCardOpen(true)}
             type="button"
           >

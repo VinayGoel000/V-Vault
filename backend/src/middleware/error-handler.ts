@@ -63,6 +63,16 @@ export const errorHandler: ErrorRequestHandler = (
     return;
   }
 
+  if (isMulterError(error)) {
+    response.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
+      error:
+        error.code === "LIMIT_FILE_SIZE"
+          ? "CSV file is larger than 5 MB"
+          : "Invalid CSV upload",
+    });
+    return;
+  }
+
   response.status(500).json({ error: "Internal server error" });
 };
 
@@ -77,5 +87,15 @@ function isBodyParserError(
   return (
     (candidate.status === 400 || candidate.status === 413) &&
     typeof candidate.type === "string"
+  );
+}
+
+function isMulterError(
+  error: unknown,
+): error is Error & { code: string } {
+  return (
+    error instanceof Error &&
+    error.name === "MulterError" &&
+    typeof (error as { code?: unknown }).code === "string"
   );
 }

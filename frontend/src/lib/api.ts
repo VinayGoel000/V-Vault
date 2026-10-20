@@ -1,12 +1,18 @@
 import type {
   AccountDetails,
   AccountSummary,
+  ActivityLogEntry,
   Card,
   CardSummary,
   CreateAccountRequest,
   HistoryEntry,
+  ImportCommitResult,
+  ImportPreview,
+  LeakCheckResult,
   MessageResponse,
   PasswordGeneratorRequest,
+  RecycleBinAccount,
+  RecycleBinCard,
   UpdateAccountRequest,
   VaultStatus,
 } from "../types";
@@ -35,14 +41,17 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
-  if (options.body !== undefined) {
+  if (options.body !== undefined && !(options.body instanceof FormData)) {
     headers.set("content-type", "application/json");
   }
 
   const response = await fetch(`${apiBase}${path}`, {
     ...options,
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body:
+      options.body === undefined || options.body instanceof FormData
+        ? (options.body as BodyInit | undefined)
+        : JSON.stringify(options.body),
   });
 
   if (response.status === 204) {
@@ -177,6 +186,67 @@ export const api = {
       body,
     });
     return response.password;
+  },
+
+  listRecycleBin: () =>
+    request<{ cards: RecycleBinCard[]; accounts: RecycleBinAccount[] }>(
+      "/recycle-bin",
+    ),
+
+  restoreCard: (id: string) =>
+    request<{ card: Card }>(`/recycle-bin/cards/${id}/restore`, {
+      method: "POST",
+    }),
+
+  restoreAccount: (id: string) =>
+    request<{ account: AccountSummary }>(`/recycle-bin/accounts/${id}/restore`, {
+      method: "POST",
+    }),
+
+  permanentlyDeleteCard: (id: string) =>
+    request<void>(`/recycle-bin/cards/${id}/permanent`, { method: "DELETE" }),
+
+  permanentlyDeleteAccount: (id: string) =>
+    request<void>(`/recycle-bin/accounts/${id}/permanent`, { method: "DELETE" }),
+
+  listActivity: async (limit = 100) => {
+    const response = await request<{ activities: ActivityLogEntry[] }>(
+      `/activity-log?limit=${encodeURIComponent(String(limit))}`,
+    );
+    return response.activities;
+  },
+
+  previewImport: async (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<ImportPreview>("/import/preview", {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  commitImport: async (file: File, previewId: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("previewId", previewId);
+    return request<ImportCommitResult>("/import/commit", {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  checkLeak: (accountId: string) =>
+    request<LeakCheckResult>("/security/leak-check", {
+      method: "POST",
+      body: { accountId },
+    }),
+
+  checkAllLeaks: async () => {
+    const response = await request<{ results: LeakCheckResult[] }>(
+      "/security/leak-check-all",
+      { method: "POST" },
+    );
+    return response.results;
   },
 };
 

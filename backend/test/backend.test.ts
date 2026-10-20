@@ -224,6 +224,207 @@ describe("V-Vault backend", () => {
     );
   });
 
+  it("supports website URLs, validated notes, and encrypted custom fields", async () => {
+    await setupAndUnlock();
+    const cardId = await createCard();
+    const secret = "custom-field-secret-123";
+    const created = await request(app)
+      .post(`/cards/${cardId}/accounts`)
+      .send({
+        email: "fields@example.com",
+        password: "account-password",
+        websiteUrl: "https://example.com/login",
+        notes: "short note",
+        customFields: [
+          { key: "Department", value: "Finance", isSecret: false },
+          { key: "PIN", value: secret, isSecret: true },
+        ],
+      })
+      .expect(201);
+    const accountId = created.body.account.id as string;
+
+    expect(created.body.account.customFields[1]).toMatchObject({
+      key: "PIN",
+      value: "********",
+      isSecret: true,
+    });
+    const detail = await request(app).get(`/accounts/${accountId}`).expect(200);
+    expect(detail.body.account).toMatchObject({
+      websiteUrl: "https://example.com/login",
+      notes: "short note",
+    });
+    expect(detail.body.account.customFields[1]).toMatchObject({
+      key: "PIN",
+      value: secret,
+      isSecret: true,
+    });
+
+    await request(app)
+      .patch(`/accounts/${accountId}`)
+      .send({ notes: "x".repeat(2_001) })
+      .expect(400);
+    const rawVault = await fs.readFile(vaultPath);
+    expect(rawVault.includes(Buffer.from(secret))).toBe(false);
+  });
+
+  it("soft-deletes accounts, restores them, and permanently deletes recycle-bin entries", async () => {
+    await setupAndUnlock();
+    const cardId = await createCard();
+    const account = await request(app)
+      .post(`/cards/${cardId}/accounts`)
+      .send({ email: "recycle@example.com", password: "recycle-password" })
+      .expect(201);
+    const accountId = account.body.account.id as string;
+
+    await request(app).delete(`/accounts/${accountId}`).expect(204);
+    await request(app).get(`/accounts/${accountId}`).expect(404);
+    const recycle = await request(app).get("/recycle-bin").expect(200);
+    expect(recycle.body.accounts.map((item: { id: string }) => item.id)).toContain(
+      accountId,
+    );
+
+    await request(app)
+      .post(`/recycle-bin/accounts/${accountId}/restore`)
+      .expect(200);
+    await request(app).get(`/accounts/${accountId}`).expect(200);
+    await request(app).delete(`/accounts/${accountId}`).expect(204);
+    await request(app)
+      .delete(`/recycle-bin/accounts/${accountId}`)
+      .expect(204);
+    await request(app).get("/recycle-bin").expect(({ body }) => {
+      expect(body.accounts.some((item: { id: string }) => item.id === accountId)).toBe(
+        false,
+      );
+    });
+  });
+
+  it("returns encrypted activity events and keeps the log bounded", async () => {
+    await setupAndUnlock();
+    const cardId = await createCard();
+    const account = await request(app)
+      .post(`/cards/${cardId}/accounts`)
+      .send({ email: "activity@example.com", password: "activity-password" })
+      .expect(201);
+    await request(app)
+      .put(`/accounts/${account.body.account.id}/password`)
+      .send({ newPassword: "new-activity-password" })
+      .expect(200);
+
+    const activity = await request(app).get("/activity").expect(200);
+    const types = activity.body.activities.map((event: { type: string }) => event.type);
+    expect(types).toEqual(expect.arrayContaining([
+       "VAULT_UNLOCKED",
+       "CARD_CREATED",
+       "ACCOUNT_CREATED",
+       "PASSWORD_CHANGED",
+    ]));
+    const rawVault = await fs.readFile(vaultPath, "utf8");
+    expect(rawVault).not.toContain("PASSWORD_CHANGED");
+  });
+
+  it("previews and commits Chrome CSV imports without exposing passwords", async () => {
+    await setupAndUnlock();
+    const csv = Buffer.from(
+      "name,url,username,password,note\nGoogle,https://google.com,import@example.com,import-secret,imported note\n",
+    );
+    const preview = await request(app)
+      .post("/import/chrome/preview")
+      .attach("file", csv, "chrome.csv")
+      .expect(200);
+    expect(preview.body.rows[0].password).toBe("********");
+    expect(JSON.stringify(preview.body)).not.toContain("import-secret");
+
+    await request(app)
+      .post("/import/chrome/commit")
+      .send({ previewId: preview.body.previewId })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ imported: 1, skippedDuplicates: 0 });
+      });
+    const cards = await request(app).get("/cards").expect(200);
+    expect(cards.body.cards).toHaveLength(1);
+    const importedAccounts = await request(app)
+      .get(`/cards/${cards.body.cards[0].id}/accounts`)
+      .expect(200);
+    expect(importedAccounts.body.accounts).toHaveLength(1);
+    const detail = await request(app)
+      .get(`/accounts/${importedAccounts.body.accounts[0].id}`)
+      .expect(200);
+    expect(detail.body.account.password).toBe("import-secret");
+
+    const duplicatePreview = await request(app)
+      .post("/import/chrome/preview")
+      .attach("file", csv, "chrome.csv")
+      .expect(200);
+    expect(duplicatePreview.body.duplicateRows).toBe(1);
+
+    const bitwarden = Buffer.from(
+      "folder,favorite,type,name,notes,fields,login_uri,login_username,login_password,login_totp\n,0,login,Bitwarden,bitwarden note,Team: Platform,https://vault.example.com,bw@example.com,bitwarden-secret,\n",
+    );
+    const bitwardenPreview = await request(app)
+      .post("/imports/bitwarden/preview")
+      .attach("file", bitwarden, "bitwarden.csv")
+      .expect(200);
+    expect(bitwardenPreview.body.rows[0].password).toBe("********");
+    await request(app)
+      .post("/imports/bitwarden/commit")
+      .field("previewId", bitwardenPreview.body.previewId)
+      .expect(200)
+      .expect(({ body }) => expect(body.imported).toBe(1));
+  });
+
+  it("uses HIBP k-anonymity and caches successful results for 24 hours", async () => {
+    const requestedUrls: string[] = [];
+    app = createApp({
+      repository: new VaultRepository(vaultPath),
+      session: new InMemorySession(),
+      hibpFetch: (async (input) => {
+        requestedUrls.push(String(input));
+        return new Response("");
+      }) as typeof fetch,
+    });
+    await setupAndUnlock();
+    const cardId = await createCard();
+    const account = await request(app)
+      .post(`/cards/${cardId}/accounts`)
+      .send({ email: "hibp@example.com", password: "hibp-password" })
+      .expect(201);
+    const accountId = account.body.account.id as string;
+
+    await request(app).post(`/accounts/${accountId}/leak-check`).expect(200);
+    const cached = await request(app)
+      .post(`/accounts/${accountId}/leak-check`)
+      .expect(200);
+    expect(cached.body).toMatchObject({ status: "safe", cached: true });
+    expect(requestedUrls).toHaveLength(1);
+    expect(new URL(requestedUrls[0]).pathname).toMatch(/\/range\/[A-F0-9]{5}$/);
+    expect(requestedUrls[0]).not.toContain("hibp-password");
+  });
+
+  it("handles HIBP network failures without exposing password data", async () => {
+    app = createApp({
+      repository: new VaultRepository(vaultPath),
+      session: new InMemorySession(),
+      hibpFetch: (async () => {
+        throw new Error("network unavailable");
+      }) as typeof fetch,
+    });
+    await setupAndUnlock();
+    const cardId = await createCard();
+    const account = await request(app)
+      .post(`/cards/${cardId}/accounts`)
+      .send({ email: "offline@example.com", password: "offline-password" })
+      .expect(201);
+
+    await request(app)
+      .post(`/accounts/${account.body.account.id}/leak-check`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ status: "unknown", count: null });
+        expect(JSON.stringify(body)).not.toContain("offline-password");
+      });
+  });
+
   async function setupAndUnlock(): Promise<void> {
     await request(app)
       .post("/vault/setup")

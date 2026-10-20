@@ -6,6 +6,7 @@ import {
   VaultRepository,
 } from "../../repositories/vault.repository";
 import { MasterPasswordVerifier } from "../../auth/master-password.verifier";
+import { appendActivity, nowIso, purgeExpiredDeletedItems } from "../base.service";
 
 export class VaultService {
   private readonly verifier: MasterPasswordVerifier;
@@ -20,6 +21,25 @@ export class VaultService {
   public async setup(masterPassword: string): Promise<void> {
     try {
       await this.repository.create(masterPassword);
+      const metadata = await this.repository.getMetadata();
+      if (metadata === null) {
+        throw new HttpError(500, "Vault setup failed");
+      }
+      const salt = Buffer.from(metadata.salt, "base64");
+      const key = await deriveVaultKey(masterPassword, salt);
+      try {
+        const vault = await this.repository.load(key);
+        appendActivity(vault, key, {
+          type: "vault_setup",
+          entityType: "vault",
+          entityLabel: "V-Vault",
+          at: nowIso(),
+        });
+        await this.repository.save(vault, key);
+      } finally {
+        key.fill(0);
+        salt.fill(0);
+      }
     } catch (error: unknown) {
       if (error instanceof VaultAlreadyExistsError) {
         throw new HttpError(409, "Vault is already set up");
@@ -46,9 +66,21 @@ export class VaultService {
     const salt = Buffer.from(metadata.salt, "base64");
     const key = await deriveVaultKey(masterPassword, salt);
     try {
-      // Authenticate the encrypted payload before making the session active.
-      await this.repository.load(key);
-      this.session.unlock(key);
+       // Authenticate the encrypted payload before making the session active.
+       const vault = await this.repository.load(key);
+       const purged = purgeExpiredDeletedItems(vault);
+       appendActivity(vault, key, {
+          type: "vault_unlocked",
+          at: nowIso(),
+          entityType: "vault",
+          entityLabel: "V-Vault",
+         details: {
+           purgedCards: purged.cards,
+           purgedAccounts: purged.accounts,
+         },
+       });
+       await this.repository.save(vault, key);
+       this.session.unlock(key);
     } finally {
       key.fill(0);
       salt.fill(0);
@@ -65,7 +97,30 @@ export class VaultService {
     };
   }
 
-  public lock(): void {
-    this.session.lock();
+  public async lock(): Promise<void> {
+    try {
+      if (this.session.isUnlocked()) {
+        await this.repository.withExclusive(async () => {
+          const key = this.session.getKey();
+          if (key === null) {
+            return;
+          }
+          try {
+            const vault = await this.repository.load(key);
+            appendActivity(vault, key, {
+              type: "vault_locked",
+              at: nowIso(),
+              entityType: "vault",
+              entityLabel: "V-Vault",
+            });
+            await this.repository.save(vault, key);
+          } finally {
+            key.fill(0);
+          }
+        });
+      }
+    } finally {
+      this.session.lock();
+    }
   }
 }

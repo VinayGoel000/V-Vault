@@ -4,9 +4,14 @@
 
 @layer base {
   :root {
+    --header: #0f766e;
+    --header-text: #ffffff;
+    --bg: #ecfdf9;
+    --accent: #0f766e;
+    --accent-dark: #115e59;
     font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
     color: #263530;
-    background: #ecfdf9;
+    background: var(--bg);
     font-synthesis: none;
     text-rendering: optimizeLegibility;
   }
@@ -44,5 +49,37 @@
 
   .vault-card {
     @apply min-h-40 rounded-2xl border border-ink-100 bg-white p-6 shadow-card transition hover:-translate-y-0.5 hover:border-ocean-200 hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-400 focus-visible:ring-offset-2;
+  }
+
+  .theme-primary {
+    background-color: var(--accent);
+    color: var(--header-text);
+  }
+
+  .theme-primary:hover {
+    background-color: var(--accent-dark);
+  }
+
+  [data-theme="midnight"] .theme-page {
+    color: #f9fafb;
+  }
+
+  [data-theme="midnight"] .theme-page .text-ink-900,
+  [data-theme="midnight"] .theme-page .text-ink-800 {
+    color: #f9fafb;
+  }
+
+  [data-theme="midnight"] .theme-page .text-ink-500,
+  [data-theme="midnight"] .theme-page .text-ink-400 {
+    color: #cbd5e1;
+  }
+
+  [data-theme="midnight"] .theme-page .vault-card,
+  [data-theme="midnight"] .theme-page .vault-card .text-ink-900 {
+    color: #111827 !important;
+  }
+
+  [data-theme="midnight"] .theme-primary {
+    color: #111827;
   }
 }

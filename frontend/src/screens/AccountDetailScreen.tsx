@@ -1,11 +1,12 @@
-import { ArrowLeft, Copy, Eye, EyeOff, KeyRound, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, ExternalLink, Eye, EyeOff, KeyRound, Pencil, Plus, RefreshCw, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button, LoadingState, Modal, PasswordField, TextArea, TextField } from "../components/ui";
 import { api } from "../api/client";
 import { useToast } from "../state/ToastContext";
 import { useVault } from "../state/VaultContext";
-import type { AccountDetails, HistoryEntry, UpdateAccountRequest } from "../api/types";
+import type { AccountDetails, CustomField, HistoryEntry, LeakCheckResult, UpdateAccountRequest } from "../api/types";
+import { randomUUID } from "../lib/random";
 
 function formatDate(value: string, includeTime = false): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -51,17 +52,22 @@ function SecretValue({
 export function AccountDetailScreen() {
   const { cardId = "", accountId = "" } = useParams<{ cardId: string; accountId: string }>();
   const navigate = useNavigate();
-  const { reportError } = useVault();
+  const { reportError, refreshCards } = useVault();
   const { success } = useToast();
   const [account, setAccount] = useState<AccountDetails | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ email: "", username: "", notes: "" });
+  const [form, setForm] = useState({ email: "", username: "", websiteUrl: "", notes: "" });
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [generating, setGenerating] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [fieldModalOpen, setFieldModalOpen] = useState(false);
+  const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
+  const [fieldForm, setFieldForm] = useState({ key: "", value: "", isSecret: false });
+  const [leakResult, setLeakResult] = useState<LeakCheckResult | null>(null);
+  const [leakBusy, setLeakBusy] = useState(false);
 
   async function loadAccount() {
     const [nextAccount, nextHistory] = await Promise.all([
@@ -72,7 +78,8 @@ export function AccountDetailScreen() {
     setHistory(nextHistory);
     setForm({
       email: nextAccount.email,
-      username: nextAccount.username,
+      username: nextAccount.username ?? "",
+      websiteUrl: nextAccount.websiteUrl ?? "",
       notes: nextAccount.notes ?? "",
     });
   }
@@ -93,13 +100,15 @@ export function AccountDetailScreen() {
     try {
       const update: UpdateAccountRequest = {
         email: form.email,
+        websiteUrl: form.websiteUrl.trim().length > 0 ? form.websiteUrl.trim() : null,
         notes: form.notes.length > 0 ? form.notes : null,
+        customFields: (account?.customFields ?? []).map(({ id, key, value, isSecret }) => ({ id, key, value, isSecret })),
       };
       if (form.username.trim().length > 0) {
         update.username = form.username.trim();
       }
-      const summary = await api.updateAccount(accountId, update);
-      setAccount((current) => (current ? { ...current, ...summary } : current));
+      await api.updateAccount(accountId, update);
+      await loadAccount();
       setEditing(false);
       success("Account details updated.");
     } catch (error: unknown) {
@@ -159,16 +168,74 @@ export function AccountDetailScreen() {
   }
 
   async function handleDelete() {
-    if (!window.confirm("Delete this account and its password history?")) return;
+    if (!window.confirm("This will be Moved to Recycle Bin — restorable for 30 days. Continue?")) return;
     setBusy(true);
     try {
       await api.deleteAccount(accountId);
-      success("Account deleted.");
+      await refreshCards();
+      success("Moved to Recycle Bin.");
       navigate(`/vault/${cardId}`);
     } catch (error: unknown) {
       reportError(error);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function saveCustomFields(fields: CustomField[]) {
+    setBusy(true);
+    try {
+      await api.updateAccount(accountId, {
+        customFields: fields.map(({ id, key, value, isSecret }) => ({ id, key, value, isSecret })),
+      });
+      await loadAccount();
+      setFieldModalOpen(false);
+      setEditingFieldId(null);
+      setFieldForm({ key: "", value: "", isSecret: false });
+      success("Custom fields updated.");
+    } catch (error: unknown) {
+      reportError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveField(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const key = fieldForm.key.trim();
+    if (!key) return;
+    const current = account?.customFields ?? [];
+    const nextField: CustomField = {
+      id: editingFieldId ?? randomUUID(),
+      key,
+      value: fieldForm.value,
+      isSecret: fieldForm.isSecret,
+    };
+    const next = editingFieldId
+      ? current.map((field) => (field.id === editingFieldId ? nextField : field))
+      : [...current, nextField];
+    await saveCustomFields(next);
+  }
+
+  function editField(field: CustomField) {
+    setEditingFieldId(field.id);
+    setFieldForm({ key: field.key, value: field.value, isSecret: field.isSecret });
+    setFieldModalOpen(true);
+  }
+
+  async function deleteField(field: CustomField) {
+    if (!window.confirm(`Delete custom field “${field.key}”?`)) return;
+    await saveCustomFields((account?.customFields ?? []).filter((candidate) => candidate.id !== field.id));
+  }
+
+  async function checkLeak() {
+    setLeakBusy(true);
+    try {
+      setLeakResult(await api.checkLeak(accountId));
+    } catch (error: unknown) {
+      reportError(error);
+    } finally {
+      setLeakBusy(false);
     }
   }
 
@@ -224,9 +291,48 @@ export function AccountDetailScreen() {
           <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-ink-400">Username{account.username ? " · click to copy" : ""}</span>
           <span className="mt-1 block truncate text-sm font-semibold text-ink-800">{account.username || "Not provided"}</span>
         </button>
+        <div className="rounded-xl border border-ink-100 bg-white px-4 py-3 shadow-card sm:col-span-2">
+          <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-ink-400">Website</span>
+          {account.websiteUrl ? (
+            <a className="mt-1 inline-flex items-center gap-2 truncate text-sm font-semibold text-ocean-700 hover:text-ocean-800" href={account.websiteUrl} rel="noreferrer" target="_blank">
+              {account.websiteUrl} <ExternalLink size={14} />
+            </a>
+          ) : <span className="mt-1 block text-sm text-ink-400">Not provided</span>}
+        </div>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+        <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-card sm:p-7 xl:col-span-2">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="eyebrow">Additional details</p>
+              <h2 className="mt-2 font-display text-xl font-bold text-ink-900">Custom fields</h2>
+              <p className="mt-1 text-sm text-ink-500">Secret values are encrypted in the vault.</p>
+            </div>
+            <Button disabled={(account.customFields ?? []).length >= 20} onClick={() => { setEditingFieldId(null); setFieldForm({ key: "", value: "", isSecret: false }); setFieldModalOpen(true); }} size="sm">
+              <Plus size={16} /> Add Field
+            </Button>
+          </div>
+          {(account.customFields ?? []).length === 0 ? (
+            <p className="mt-5 rounded-xl bg-ink-50 px-4 py-4 text-sm text-ink-500">No custom fields yet.</p>
+          ) : (
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              {(account.customFields ?? []).map((field) => (
+                <div className="rounded-xl border border-ink-100 p-4" key={field.id}>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-bold uppercase tracking-[0.12em] text-ink-400">{field.key}{field.isSecret ? " · secret" : ""}</span>
+                    <div className="flex gap-1">
+                      <button aria-label={`Edit ${field.key}`} className="rounded-lg p-1.5 text-ink-400 hover:bg-ocean-50 hover:text-ocean-700" onClick={() => editField(field)} type="button"><Pencil size={15} /></button>
+                      <button aria-label={`Delete ${field.key}`} className="rounded-lg p-1.5 text-ink-400 hover:bg-red-50 hover:text-red-700" onClick={() => void deleteField(field)} type="button"><Trash2 size={15} /></button>
+                    </div>
+                  </div>
+                  <button className="mt-3 block max-w-full truncate text-left text-sm font-semibold text-ink-800 hover:text-ocean-700" onClick={() => void handleCopy(field.value, field.key)} type="button">{field.value}</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
         <section className="rounded-2xl border border-ink-100 bg-white p-5 shadow-card sm:p-7">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
@@ -261,6 +367,21 @@ export function AccountDetailScreen() {
               Open generator
             </Link>
           </div>
+          <div className="mt-5 rounded-xl border border-ink-100 bg-ink-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-ink-800">Leak check</p>
+                <p className="mt-1 text-xs text-ink-500">Only the first 5 characters of the password's hash are sent — your password never leaves this device.</p>
+              </div>
+              <Button disabled={leakBusy} onClick={() => void checkLeak()} size="sm" variant="secondary">{leakBusy ? "Checking…" : "Check if leaked"}</Button>
+            </div>
+            {leakResult ? (
+              <div className={`mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold ${leakResult.status === "leaked" ? "bg-red-50 text-red-700" : leakResult.status === "safe" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
+                {leakResult.status === "leaked" ? <ShieldAlert size={16} /> : <ShieldCheck size={16} />}
+                {leakResult.status === "leaked" ? `Found in ${leakResult.count ?? 0} known leaks — change this password` : leakResult.status === "safe" ? "Not found in any known leak" : "Leak check unavailable right now"}
+              </div>
+            ) : null}
+          </div>
         </section>
 
         {editing ? (
@@ -284,8 +405,17 @@ export function AccountDetailScreen() {
                 onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
                 value={form.username}
               />
+              <TextField
+                autoComplete="url"
+                label="Website"
+                onChange={(event) => setForm((current) => ({ ...current, websiteUrl: event.target.value }))}
+                placeholder="https://example.com"
+                type="url"
+                value={form.websiteUrl}
+              />
               <TextArea
                 label="Notes"
+                maxLength={2000}
                 onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
                 value={form.notes}
               />
@@ -382,6 +512,20 @@ export function AccountDetailScreen() {
               <RefreshCw size={14} />
               {generating ? "Generating…" : "Generate a strong password"}
             </Button>
+          </form>
+        </Modal>
+      ) : null}
+      {fieldModalOpen ? (
+        <Modal
+          description="Custom field values are encrypted when Is secret is enabled."
+          onClose={() => setFieldModalOpen(false)}
+          title={editingFieldId ? "Edit custom field" : "Add custom field"}
+          footer={<><Button onClick={() => setFieldModalOpen(false)} variant="ghost">Cancel</Button><Button disabled={busy || fieldForm.key.trim().length === 0} form="custom-field-form" type="submit">{busy ? "Saving…" : "Save field"}</Button></>}
+        >
+          <form className="space-y-5" id="custom-field-form" onSubmit={(event) => void saveField(event)}>
+            <TextField label="Key" maxLength={50} onChange={(event) => setFieldForm((current) => ({ ...current, key: event.target.value }))} placeholder="e.g. Recovery code" value={fieldForm.key} />
+            <TextArea label="Value" maxLength={1000} onChange={(event) => setFieldForm((current) => ({ ...current, value: event.target.value }))} value={fieldForm.value} />
+            <label className="flex items-center gap-3 text-sm font-semibold text-ink-800"><input checked={fieldForm.isSecret} onChange={(event) => setFieldForm((current) => ({ ...current, isSecret: event.target.checked }))} type="checkbox" /> Is secret</label>
           </form>
         </Modal>
       ) : null}
